@@ -1,0 +1,833 @@
+"use client"
+
+import type React from "react"
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { ThemeToggle } from "@/components/theme-toggle"
+import NotificationButton from "@/components/notification-button"
+import ProfileDropdown from "@/components/profile-dropdown"
+
+interface User {
+  _id: string
+  name: string
+  email: string
+  profileImage?: string
+  createdAt: string
+}
+
+interface HouseholdMember {
+  _id: string
+  name: string
+  email: string
+  profileImage?: string
+}
+
+interface Task {
+  _id: string
+  title: string
+  description: string
+  status: "pending" | "completed" | "overdue"
+  priority: "high" | "medium" | "low"
+  category: string
+  dueDate: string
+  assignedTo: string
+  createdBy: HouseholdMember
+  createdAt: string
+  householdId: string
+}
+
+export default function TodoPage() {
+  const [user, setUser] = useState<User | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [sidebarHidden, setSidebarHidden] = useState(false)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [addTaskModalOpen, setAddTaskModalOpen] = useState(false)
+  const [tasks, setTasks] = useState<Task[]>([])
+  const [householdMembers, setHouseholdMembers] = useState<HouseholdMember[]>([])
+  const [filterStatus, setFilterStatus] = useState("")
+  const [filterPriority, setFilterPriority] = useState("")
+  const [newTask, setNewTask] = useState({
+    title: "",
+    description: "",
+    priority: "medium",
+    category: "casa",
+    dueDate: "",
+    assignedTo: "", // Now stores the name directly as text
+  })
+  const router = useRouter()
+
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    const userData = localStorage.getItem("user")
+
+    if (!token || !userData) {
+      router.push("/login")
+      return
+    }
+
+    try {
+      const parsedUser = JSON.parse(userData)
+      setUser(parsedUser)
+      fetchTasks()
+      fetchHouseholdMembers()
+    } catch (error) {
+      console.error("Error parsing user data:", error)
+      router.push("/login")
+    } finally {
+      setLoading(false)
+    }
+  }, [router])
+
+  const fetchTasks = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/tasks", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setTasks(data.tasks)
+      }
+    } catch (error) {
+      console.error("Error fetching tasks:", error)
+    }
+  }
+
+  const fetchHouseholdMembers = async () => {
+    try {
+      const token = localStorage.getItem("token")
+      const activeHouseholdId = localStorage.getItem("activeHouseholdId")
+
+      console.log("[v0] Fetching household members for:", activeHouseholdId)
+
+      if (!activeHouseholdId) {
+        console.log("[v0] No active household found")
+        return
+      }
+
+      const response = await fetch("/api/households", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        console.log("[v0] Households data received:", data)
+
+        const activeHousehold = data.households.find((h: any) => h._id === activeHouseholdId)
+
+        if (activeHousehold && activeHousehold.members) {
+          console.log("[v0] Found household members:", activeHousehold.members)
+          setHouseholdMembers(activeHousehold.members)
+        } else {
+          console.log("[v0] No members found in active household, using current user")
+          if (user) {
+            setHouseholdMembers([
+              {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                profileImage: user.profileImage,
+              },
+            ])
+          }
+        }
+      } else {
+        console.error("[v0] Failed to fetch households:", response.status)
+      }
+    } catch (error) {
+      console.error("Error fetching household members:", error)
+      if (user) {
+        setHouseholdMembers([
+          {
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            profileImage: user.profileImage,
+          },
+        ])
+      }
+    }
+  }
+
+  const handleCreateTask = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!newTask.title || !newTask.description || !newTask.dueDate) {
+      alert("Por favor completa todos los campos requeridos")
+      return
+    }
+
+    const activeHouseholdId = localStorage.getItem("activeHouseholdId")
+
+    console.log("[v0] Creating task with householdId:", activeHouseholdId)
+
+    if (!activeHouseholdId) {
+      alert("No se encontró el hogar activo. Por favor selecciona un hogar primero.")
+      return
+    }
+
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          ...newTask,
+          householdId: activeHouseholdId, // Include householdId explicitly
+        }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setTasks([data.task, ...tasks])
+        setAddTaskModalOpen(false)
+        setNewTask({
+          title: "",
+          description: "",
+          priority: "medium",
+          category: "casa",
+          dueDate: "",
+          assignedTo: "",
+        })
+      } else {
+        const error = await response.json()
+        alert(error.error || "Error al crear la tarea")
+      }
+    } catch (error) {
+      console.error("Error creating task:", error)
+      alert("Error al crear la tarea")
+    }
+  }
+
+  const toggleTaskComplete = async (taskId: string) => {
+    const task = tasks.find((t) => t._id === taskId)
+    if (!task) return
+
+    const newStatus = task.status === "completed" ? "pending" : "completed"
+
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setTasks(tasks.map((t) => (t._id === taskId ? data.task : t)))
+      }
+    } catch (error) {
+      console.error("Error updating task:", error)
+    }
+  }
+
+  const deleteTask = async (taskId: string) => {
+    if (!confirm("¿Estás seguro de que quieres eliminar esta tarea?")) return
+
+    try {
+      const token = localStorage.getItem("token")
+      const response = await fetch(`/api/tasks/${taskId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (response.ok) {
+        setTasks(tasks.filter((t) => t._id !== taskId))
+      }
+    } catch (error) {
+      console.error("Error deleting task:", error)
+    }
+  }
+
+  const filteredTasks = tasks.filter((task) => {
+    if (filterStatus && task.status !== filterStatus) return false
+    if (filterPriority && task.priority !== filterPriority) return false
+    return true
+  })
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffTime = date.getTime() - now.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) return "Hoy"
+    if (diffDays === 1) return "Mañana"
+    if (diffDays === -1) return "Ayer"
+    if (diffDays < 0) return `Hace ${Math.abs(diffDays)} días`
+    return `En ${diffDays} días`
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
+  }
+
+  return (
+    <div className="font-roboto min-h-screen bg-gray-50 dark:bg-gray-900">
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      <div className="flex min-h-screen">
+        {/* Sidebar */}
+        <div
+          className={`fixed lg:static inset-y-0 left-0 z-50 w-64 lg:w-80 bg-blue-500 dark:bg-gray-800 text-white transform transition-transform duration-300 ease-in-out ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          } ${sidebarHidden ? "lg:-translate-x-full" : ""}`}
+        >
+          {/* ... existing sidebar code ... */}
+          <div className="flex items-center justify-between p-4 lg:justify-center">
+            <span className="text-2xl lg:text-3xl font-bold text-white animate-fade-in">HomeApp</span>
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="lg:hidden text-white hover:text-gray-300 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12 7-7"></path>
+              </svg>
+            </button>
+          </div>
+
+          <nav className="mt-8 px-4 space-y-2">
+            <Link
+              href="/dashboard"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m0 0V9a2 2 0 012-2h2a2 2 0 012 2v12m-6 0h6"
+                ></path>
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Inicio</span>
+            </Link>
+
+            <Link
+              href="/finanzas"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Finanzas</span>
+            </Link>
+
+            <Link
+              href="/todo"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                ></path>
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Lista de Tareas</span>
+            </Link>
+
+            <Link
+              href="/menu"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
+                ></path>
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Menú</span>
+            </Link>
+
+            <Link
+              href="/alacena"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M4 7v10c0 2.21 4.03 4 9 4 4.97 0 9-1.79 9-4V7c0-2.21-4.03-4-9-4-4.97 0-9 1.79-9 4zm0 5c0 2.21 4.03 4 9 4 4.97 0 9-1.79 9-4"
+                ></path>
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Alacena</span>
+            </Link>
+          </nav>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1 lg:ml-0">
+          {/* Header */}
+          <div className="bg-white shadow-sm border-b border-gray-200 dark:bg-gray-800 dark:border-gray-700">
+            {/* Mobile Header */}
+            <div className="lg:hidden flex items-center justify-between p-4">
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+              </button>
+              <h1 className="text-xl font-bold text-gray-800 dark:text-white">Lista de Tareas</h1>
+              <div className="flex items-center space-x-2">
+                <NotificationButton />
+                <ThemeToggle />
+                <ProfileDropdown user={user} />
+              </div>
+            </div>
+
+            {/* Desktop Header */}
+            <div className="hidden lg:block">
+              <div className="flex items-center justify-between px-6 py-4">
+                <div className="flex items-center space-x-4">
+                  <button
+                    onClick={() => setSidebarHidden(!sidebarHidden)}
+                    className="p-2 text-gray-600 hover:text-gray-900 transition-colors dark:text-gray-300 dark:hover:text-white"
+                    title="Ocultar/Mostrar menú"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M4 6h16M4 12h16M4 18h16"
+                      ></path>
+                    </svg>
+                  </button>
+                  <div className="flex items-center space-x-3">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                      ></path>
+                    </svg>
+                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white">Lista de Tareas</h1>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <NotificationButton />
+                  <ThemeToggle />
+                  <ProfileDropdown user={user} />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-4 lg:p-8 bg-gray-50 min-h-screen dark:bg-gray-900">
+            <div className="max-w-4xl mx-auto space-y-6">
+              {/* Header con filtros */}
+              <div className="bg-white rounded-xl shadow-sm p-6 animate-fade-in dark:bg-gray-800">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  <h2 className="text-2xl font-bold text-gray-800 dark:text-white">Mis Tareas</h2>
+                  <div className="flex flex-wrap gap-3">
+                    <select
+                      value={filterStatus}
+                      onChange={(e) => setFilterStatus(e.target.value)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                    >
+                      <option value="">Todas las tareas</option>
+                      <option value="pending">Pendientes</option>
+                      <option value="completed">Completadas</option>
+                      <option value="overdue">Vencidas</option>
+                    </select>
+                    <select
+                      value={filterPriority}
+                      onChange={(e) => setFilterPriority(e.target.value)}
+                      className="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                    >
+                      <option value="">Todas las prioridades</option>
+                      <option value="high">Alta</option>
+                      <option value="medium">Media</option>
+                      <option value="low">Baja</option>
+                    </select>
+                    <button
+                      onClick={() => setAddTaskModalOpen(true)}
+                      className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition-all duration-200 hover:scale-105 transform flex items-center space-x-2"
+                    >
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                        ></path>
+                      </svg>
+                      <span>Nueva Tarea</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Tareas */}
+              <div className="space-y-4">
+                {filteredTasks.map((task) => (
+                  <div
+                    key={task._id}
+                    className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-all duration-300 hover:scale-[1.02] transform animate-scale-in dark:bg-gray-800 ${
+                      task.status === "completed" ? "opacity-75" : ""
+                    }`}
+                  >
+                    <div className="flex">
+                      <div
+                        className={`w-2 rounded-l-xl ${
+                          task.priority === "high"
+                            ? "bg-red-500"
+                            : task.priority === "medium"
+                              ? "bg-orange-500"
+                              : "bg-blue-500"
+                        }`}
+                      ></div>
+                      <div className="flex-1 p-6">
+                        <div className="flex items-start space-x-4">
+                          <div className="flex items-center mt-1">
+                            <input
+                              type="checkbox"
+                              checked={task.status === "completed"}
+                              onChange={() => toggleTaskComplete(task._id)}
+                              className="w-5 h-5 text-blue-600 border-2 border-gray-300 rounded focus:ring-blue-600 focus:ring-2 transition-all dark:bg-gray-700 dark:border-gray-600 dark:focus:ring-blue-500"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between">
+                              <div className="flex-1 mb-4 lg:mb-0 lg:pr-6">
+                                <h3
+                                  className={`text-lg font-semibold text-gray-800 mb-2 dark:text-gray-100 ${
+                                    task.status === "completed" ? "line-through" : ""
+                                  }`}
+                                >
+                                  {task.title}
+                                </h3>
+                                <p
+                                  className={`text-gray-600 mb-3 dark:text-gray-400 ${
+                                    task.status === "completed" ? "line-through" : ""
+                                  }`}
+                                >
+                                  {task.description}
+                                </p>
+                                <div className="flex flex-wrap gap-2 mb-3">
+                                  <span
+                                    className={`px-3 py-1 text-xs font-medium rounded-full ${
+                                      task.status === "completed"
+                                        ? "bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100"
+                                        : task.priority === "high"
+                                          ? "bg-red-100 text-red-800 dark:bg-red-700 dark:text-red-100"
+                                          : task.priority === "medium"
+                                            ? "bg-orange-100 text-orange-800 dark:bg-orange-700 dark:text-orange-100"
+                                            : "bg-green-100 text-green-800 dark:bg-green-700 dark:text-green-100"
+                                    }`}
+                                  >
+                                    {task.status === "completed"
+                                      ? "Completada"
+                                      : task.priority === "high"
+                                        ? "Prioridad Alta"
+                                        : task.priority === "medium"
+                                          ? "Prioridad Media"
+                                          : "Prioridad Baja"}
+                                  </span>
+                                  <span className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full dark:bg-blue-700 dark:text-blue-100">
+                                    {task.category}
+                                  </span>
+                                </div>
+                                <div className="flex items-center space-x-4 text-sm text-gray-500 dark:text-gray-300">
+                                  <span>📅 {formatDate(task.dueDate)}</span>
+                                  <span>👤 {task.assignedTo}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center space-x-2">
+                                <button
+                                  onClick={() => deleteTask(task._id)}
+                                  className="p-2 hover:bg-red-100 rounded-lg transition-colors group dark:hover:bg-gray-600"
+                                >
+                                  <svg
+                                    className="w-5 h-5 text-gray-600 group-hover:text-red-600 group-hover:scale-110 transition-all dark:text-gray-300 dark:group-hover:text-red-300"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth="2"
+                                      d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                    ></path>
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Estadísticas */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fade-in">
+                <div className="bg-white rounded-xl shadow-sm p-6 dark:bg-gray-800">
+                  <div className="flex items-center">
+                    <div className="p-3 bg-blue-100 rounded-full dark:bg-blue-700">
+                      <svg
+                        className="w-6 h-6 text-blue-600 dark:text-blue-100"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        ></path>
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Total de Tareas</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">{tasks.length}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm p-6 dark:bg-gray-800">
+                  <div className="flex items-center">
+                    <div className="p-3 bg-green-100 rounded-full dark:bg-green-700">
+                      <svg
+                        className="w-6 h-6 text-green-600 dark:text-green-100"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        ></path>
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Completadas</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                        {tasks.filter((task) => task.status === "completed").length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm p-6 dark:bg-gray-800">
+                  <div className="flex items-center">
+                    <div className="p-3 bg-orange-100 rounded-full dark:bg-orange-700">
+                      <svg
+                        className="w-6 h-6 text-orange-600 dark:text-orange-100"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                        ></path>
+                      </svg>
+                    </div>
+                    <div className="ml-4">
+                      <p className="text-sm font-medium text-gray-600 dark:text-gray-300">Pendientes</p>
+                      <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                        {tasks.filter((task) => task.status === "pending").length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal para agregar tarea */}
+      {addTaskModalOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto animate-scale-in dark:bg-gray-800">
+            <div className="p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-bold text-gray-800 dark:text-white">Nueva Tarea</h3>
+                <button
+                  onClick={() => setAddTaskModalOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors dark:text-gray-300 dark:hover:text-white"
+                >
+                  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateTask} className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
+                    Título de la tarea
+                  </label>
+                  <input
+                    type="text"
+                    value={newTask.title}
+                    onChange={(e) => setNewTask({ ...newTask, title: e.target.value })}
+                    placeholder="Ej: Limpiar la sala"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Descripción</label>
+                  <textarea
+                    value={newTask.description}
+                    onChange={(e) => setNewTask({ ...newTask, description: e.target.value })}
+                    placeholder="Describe los detalles de la tarea..."
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 resize-none dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Prioridad</label>
+                  <select
+                    value={newTask.priority}
+                    onChange={(e) => setNewTask({ ...newTask, priority: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                  >
+                    <option value="low">Baja</option>
+                    <option value="medium">Media</option>
+                    <option value="high">Alta</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
+                    Fecha límite
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={newTask.dueDate}
+                    onChange={(e) => setNewTask({ ...newTask, dueDate: e.target.value })}
+                    min={new Date().toISOString().slice(0, 16)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">
+                    Asignar a (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    value={newTask.assignedTo}
+                    onChange={(e) => setNewTask({ ...newTask, assignedTo: e.target.value })}
+                    placeholder="Nombre de la persona"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 dark:text-gray-300">Categoría</label>
+                  <select
+                    value={newTask.category}
+                    onChange={(e) => setNewTask({ ...newTask, category: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-600 dark:bg-gray-700 dark:border-gray-600 dark:text-white dark:focus:ring-blue-500"
+                  >
+                    <option value="casa">Casa</option>
+                    <option value="compras">Compras</option>
+                    <option value="trabajo">Trabajo</option>
+                    <option value="personal">Personal</option>
+                  </select>
+                </div>
+
+                <div className="flex space-x-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => setAddTaskModalOpen(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Crear Tarea
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

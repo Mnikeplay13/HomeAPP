@@ -1,0 +1,1115 @@
+"use client" // Componente de cliente para usar hooks de React
+
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import Link from "next/link"
+import ThemeToggle from "@/components/theme-toggle" // Componente para cambiar tema claro/oscuro
+import NotificationButton from "@/components/notification-button" // Sistema de notificaciones
+import ProfileDropdown from "@/components/profile-dropdown" // Menú de perfil de usuario
+import ReportGenerator from "@/components/report-generator" // Generador de reportes PDF
+
+// Interface para definir estructura de datos del usuario
+interface User {
+  _id: string
+  name: string
+  email: string
+  profileImage?: string
+  createdAt: string
+}
+
+// Interface para productos del inventario (alacena)
+interface Product {
+  _id: string
+  name: string
+  category: string
+  quantity: number
+  unit: string
+  expirationDate: string
+  purchaseDate: string
+  location: string
+  notes?: string
+  image?: string
+  householdId: string
+  createdAt: string
+  updatedAt: string
+}
+
+// Interface para tareas del hogar
+interface Task {
+  _id: string
+  title: string
+  description: string
+  status: "pending" | "completed" | "overdue" // Estados posibles de la tarea
+  priority: "high" | "medium" | "low" // Niveles de prioridad
+  category: string
+  dueDate: string
+  assignedTo: {
+    _id: string
+    name: string
+    email: string
+  }
+  createdBy: {
+    _id: string
+    name: string
+    email: string
+  }
+  createdAt: string
+}
+
+// Interface para notificaciones del sistema
+interface Notification {
+  data: any
+  _id: string
+  type: string
+  title: string
+  message: string
+  read: boolean // Indica si la notificación fue leída
+  createdAt: string
+}
+
+// Componente principal del Dashboard - Panel de control central
+export default function DashboardPage() {
+  // Estados principales del componente
+  const [user, setUser] = useState<User | null>(null) // Datos del usuario actual
+  const [activeHouseholdId, setActiveHouseholdId] = useState<string | null>(null) // ID del hogar activo
+  const [loading, setLoading] = useState(true) // Estado de carga inicial
+  const [sidebarHidden, setSidebarHidden] = useState(false) // Control de sidebar
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false) // Menú móvil
+  
+  // Estados para datos del dashboard
+  const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]) // Productos con stock bajo
+  const [expiredProducts, setExpiredProducts] = useState<Product[]>([]) // Productos vencidos
+  const [userTasks, setUserTasks] = useState<Task[]>([]) // Tareas del usuario
+  const [notifications, setNotifications] = useState<Notification[]>([]) // Notificaciones
+  
+  // Estados para UI
+  const [loadingAlerts, setLoadingAlerts] = useState(true) // Carga de alertas
+  const [alertsPanelOpen, setAlertsPanelOpen] = useState(false) // Panel de alertas
+  const [reportModalOpen, setReportModalOpen] = useState(false) // Modal de reportes
+  
+  const router = useRouter()
+
+  // Función optimizada con cache para calcular estado de productos
+  const calculateProductStatus = (() => {
+    const cache = new Map<string, "ok" | "low" | "expiring" | "expired">()
+
+    return (product: Product): "ok" | "low" | "expiring" | "expired" => {
+      // Usar cache para evitar cálculos repetidos
+      if (cache.has(product._id)) {
+        return cache.get(product._id)!
+      }
+
+      let status: "ok" | "low" | "expiring" | "expired" = "ok"
+
+      // Prioridad 1: Verificar vencimiento (más crítico)
+      if (product.expirationDate) {
+        const now = new Date()
+        const expiry = new Date(product.expirationDate)
+        const daysUntilExpiry = Math.ceil((expiry.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+
+        if (daysUntilExpiry < 0) {
+          status = "expired" // Producto vencido
+        } else if (daysUntilExpiry <= 3) {
+          status = "expiring" // Por vencer (3 días o menos)
+        }
+      }
+
+      // Check stock by comparing with threshold values
+      if (status === "ok") {
+        const thresholds: { [key: string]: number } = {
+          alimentos: 2,
+          bebidas: 1,
+          limpieza: 1,
+          higiene: 1,
+          medicamentos: 1,
+          otros: 1,
+        }
+        const threshold = thresholds[product.category] || 1
+
+        if (product.quantity <= threshold) {
+          status = "low"
+        }
+      }
+
+      cache.set(product._id, status)
+      return status
+    }
+  })()
+
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    const userData = localStorage.getItem("user")
+
+    if (!token || !userData) {
+      router.push("/login")
+      return
+    }
+
+    try {
+      const parsedUser = JSON.parse(userData)
+      setUser(parsedUser)
+      setActiveHouseholdId(localStorage.getItem("activeHouseholdId"))
+      loadAlerts(parsedUser._id)
+    } catch (error) {
+      console.error("Error parsing user data:", error)
+      router.push("/login")
+    } finally {
+      setLoading(false)
+    }
+  }, [router])
+
+  useEffect(() => {
+    async function fetchNotifications() {
+      const res = await fetch("/api/notifications?householdId=ID_DEL_HOGAR")
+      const data = await res.json()
+      setNotifications(data.notifications)
+    }
+    fetchNotifications()
+  }, [])
+
+  const loadAlerts = async (userId: string) => {
+    setLoadingAlerts(true)
+    try {
+      // Load products from alacena
+      const token = localStorage.getItem("token")
+      const productsResponse = await fetch("/api/products", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (productsResponse.ok) {
+        const productsData = await productsResponse.json()
+        const products = productsData.products || []
+        console.log("Productos recibidos:", products) // <-- Agrega esto
+
+        // Filter expired and low stock products
+        const expired = products.filter((product: Product) => calculateProductStatus(product) === "expired")
+        const lowStock = products.filter((product: Product) => calculateProductStatus(product) === "low")
+
+        setExpiredProducts(expired)
+        setLowStockProducts(lowStock)
+      }
+
+      // Load user's pending tasks
+      const tasksResponse = await fetch("/api/tasks", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (tasksResponse.ok) {
+        const tasksData = await tasksResponse.json()
+        const pendingUserTasks = tasksData.tasks.filter(
+          (task: Task) => task.assignedTo._id === userId && task.status === "pending",
+        )
+        setUserTasks(pendingUserTasks)
+      }
+
+      const notificationsResponse = await fetch("/api/notifications", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      if (notificationsResponse.ok) {
+        const notificationsData = await notificationsResponse.json()
+        setNotifications(notificationsData.notifications || [])
+      }
+    } catch (error) {
+      console.error("Error loading alerts:", error)
+    } finally {
+      setLoadingAlerts(false)
+    }
+  }
+
+  const clearNotifications = async () => {
+    setNotifications([]) // Limpia en el frontend
+    const token = localStorage.getItem("token")
+    await fetch("/api/notifications/clear", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+  }
+
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("user")
+    router.push("/")
+  }
+
+  const toggleSidebar = () => {
+    setSidebarHidden(!sidebarHidden)
+  }
+
+  const toggleMobileMenu = () => {
+    setMobileMenuOpen(!mobileMenuOpen)
+  }
+
+  const formatTaskDate = (dateString: string) => {
+    const date = new Date(dateString)
+    const now = new Date()
+    const diffTime = date.getTime() - now.getTime()
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    if (diffDays === 0) return "Hoy"
+    if (diffDays === 1) return "Mañana"
+    if (diffDays === -1) return "Ayer"
+    if (diffDays < 0) return `Hace ${Math.abs(diffDays)} días`
+    return `En ${diffDays} días`
+  }
+
+  const productAlerts = (notifications ?? []).filter(
+    n => n.type === "product_low_stock" || n.type === "product_expiring"
+  )
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return null
+  }
+
+  return (
+    <div className="font-roboto min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors duration-300">
+      {/* Mobile Menu Overlay */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setMobileMenuOpen(false)} />
+      )}
+
+      <div className="flex min-h-screen">
+        {/* Sidebar */}
+        <div
+          className={`fixed lg:static inset-y-0 left-0 z-50 w-64 lg:w-80 bg-blue-500 dark:bg-gray-800 text-white transform transition-transform duration-300 ease-in-out ${
+            mobileMenuOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          } ${sidebarHidden ? "lg:-translate-x-full" : ""}`}
+        >
+          {/* Sidebar Header */}
+          <div className="flex items-center justify-between p-4 lg:justify-center">
+            <div className="flex items-center space-x-2 animate-fade-in">
+              <img
+                src="https://files.catbox.moe/xhu5ls.png"
+                alt="HomeApp"
+                className="h-10 w-auto drop-shadow-md"
+              />
+              <span className="text-2xl lg:text-3xl font-bold text-white">HomeApp</span>
+            </div>
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="lg:hidden text-white hover:text-gray-300 transition-colors"
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+              </svg>
+            </button>
+          </div>
+
+          {/* Navigation Links */}
+          <nav className="mt-8 px-4 space-y-2">
+            {/* Icono de inicio */}
+            <Link
+              href="/dashboard"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M10,20V14H14V20H19V12H22L12,3L2,12H5V20H10Z" />
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Inicio</span>
+            </Link>
+
+            <Link
+              href="/finanzas"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                ></path>
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Finanzas</span>
+            </Link>
+
+            {/* Icono de Tareas */}
+            <Link
+              href="/todo"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M19,3H14.82C14.4,1.84 13.3,1 12,1C10.7,1 9.6,1.84 9.18,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M12,3A1,1 0 0,1 13,4A1,1 0 0,1 12,5A1,1 0 0,1 11,4A1,1 0 0,1 12,3M7,7H17V5H19V19H5V5H7V7Z" />
+                <path d="M8,13H16V11H8V13Z" />
+                <path d="M8,17H16V15H8V17Z" />
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Lista de Tareas</span>
+            </Link>
+
+            {/* Icono de Menú */}
+            <Link
+              href="/menu"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M8.1,13.34L3.91,9.16C2.35,7.59 2.35,5.06 3.91,3.5L10.93,10.5L8.1,13.34M22.91,3.5C21.34,1.93 18.81,1.93 17.25,3.5L13.07,7.69L16.9,11.5L22.91,5.5C24.47,3.94 24.47,1.41 22.91,3.5M3.91,16.16L10.93,23.18L13.76,20.34L6.74,13.32L3.91,16.16M20.07,15.93L17.24,13.1L13.07,17.27L15.9,20.1L20.07,15.93Z" />
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Menú</span>
+            </Link>
+
+            {/* Icono de Alacena */}
+            <Link
+              href="/alacena"
+              className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+            >
+              <svg
+                className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M12,15.5A3.5,3.5 0 0,1 8.5,12A3.5,3.5 0 0,1 12,8.5A3.5,3.5 0 0,1 15.5,12A3.5,3.5 0 0,1 12,15.5M19.43,12.97C19.47,12.65 19.5,12.33 19.5,12C19.5,11.67 19.47,11.34 19.43,11L21.54,9.37C21.73,9.22 21.78,8.95 21.66,8.73L19.66,5.27C19.54,5.05 19.27,4.96 19.05,5.05L16.56,6.05C16.04,5.66 15.5,5.32 14.87,5.07L14.5,2.42C14.46,2.18 14.25,2 14,2H10C9.75,2 9.54,2.18 9.5,2.42L9.13,5.07C8.5,5.32 7.96,5.66 7.44,6.05L4.95,5.05C4.73,4.96 4.46,5.05 4.34,5.27L2.34,8.73C2.21,8.95 2.27,9.22 2.46,9.37L4.57,11C4.53,11.34 4.5,11.67 4.5,12C4.5,12.33 4.53,12.65 4.57,12.97L2.46,14.63C2.27,14.78 2.21,15.05 2.34,15.27L4.34,18.73C4.46,18.95 4.73,19.03 4.95,18.95L7.44,17.94C7.96,18.34 8.5,18.68 9.13,18.93L9.5,21.58C9.54,21.82 9.75,22 10,22H14C14.25,22 14.46,21.82 14.5,21.58L14.87,18.93C15.5,18.67 16.04,18.34 16.56,17.94L19.05,18.95C19.27,19.03 19.54,18.95 19.66,18.73L21.66,15.27C21.78,15.05 21.73,14.78 21.54,14.63L19.43,12.97Z" />
+              </svg>
+              <span className="text-white ml-4 text-lg font-semibold">Alacena</span>
+            </Link>
+
+            {/* Configuración del grupo */}
+            {activeHouseholdId && (
+              <Link
+                href={`/household-settings/${activeHouseholdId}`}
+                className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
+              >
+                <svg
+                  className="w-6 h-6 text-white transition-transform group-hover:scale-110"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M15 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
+                </svg>
+                <span className="text-white ml-4 text-lg font-semibold">Configuración del grupo</span>
+              </Link>
+            )}
+
+                      </nav>
+        </div>
+
+        {/* Main Content */}
+        <div className="flex-1">
+          {/* Header */}
+          <div className="bg-white dark:bg-gray-800 shadow-xl border-b border-gray-200 dark:border-gray-700 transition-colors duration-300">
+            {/* Mobile Header */}
+            <div className="lg:hidden flex items-center justify-between p-4">
+              <button
+                onClick={toggleMobileMenu}
+                className="text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
+                </svg>
+              </button>
+              <div className="flex items-center space-x-2">
+                <img
+                  src="https://files.catbox.moe/xhu5ls.png"
+                  alt="HomeApp"
+                  className="h-8 w-auto"
+                />
+                <span className="text-xl font-bold text-gray-800 dark:text-white">HomeApp</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setAlertsPanelOpen(!alertsPanelOpen)}
+                    className="relative p-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                    title="Alertas"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    {(expiredProducts.length > 0 || lowStockProducts.length > 0 || userTasks.length > 0) && (
+                      <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-4.5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">
+                        {expiredProducts.length + lowStockProducts.length + userTasks.length}
+                      </span>
+                    )}
+                  </button>
+                  {alertsPanelOpen && (
+                    <>
+                      <div className="fixed inset-0 z-40" onClick={() => setAlertsPanelOpen(false)} />
+                      <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-80 overflow-y-auto p-3">
+                        <h3 className="font-semibold text-gray-800 dark:text-white mb-2">Alertas</h3>
+                        {expiredProducts.length > 0 && (
+                          <p className="text-sm text-red-600 dark:text-red-400">{expiredProducts.length} producto(s) vencido(s)</p>
+                        )}
+                        {lowStockProducts.length > 0 && (
+                          <p className="text-sm text-yellow-600 dark:text-yellow-400">{lowStockProducts.length} con stock bajo</p>
+                        )}
+                        {userTasks.length > 0 && (
+                          <p className="text-sm text-blue-600 dark:text-blue-400">{userTasks.length} tarea(s) pendiente(s)</p>
+                        )}
+                        {expiredProducts.length === 0 && lowStockProducts.length === 0 && userTasks.length === 0 && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Sin alertas</p>
+                        )}
+                        <Link href="/alacena" className="text-xs text-blue-600 dark:text-blue-400 mt-2 block">Ver alacena</Link>
+                        <Link href="/todo" className="text-xs text-blue-600 dark:text-blue-400 block">Ver tareas</Link>
+                      </div>
+                    </>
+                  )}
+                </div>
+                <NotificationButton />
+                <ThemeToggle />
+                <ProfileDropdown user={user} />
+              </div>
+            </div>
+
+            {/* Desktop Header */}
+            <div className="hidden lg:block">
+              {/* Navbar */}
+              <div className="flex items-center justify-between px-6 py-4">
+                <div className="flex items-center space-x-4 flex-1">
+                  <button
+                    onClick={toggleSidebar}
+                    className="p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
+                    title="Ocultar/Mostrar menú"
+                  >
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M4 6h16M4 12h16M4 18h16"
+                      ></path>
+                    </svg>
+                  </button>
+                  <div className="relative flex-1 max-w-md">
+                    <svg
+                      className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                      ></path>
+                    </svg>
+                    <input
+                      type="text"
+                      placeholder="Buscar..."
+                      className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                    />
+                  </div>
+                </div>
+              <div className="flex items-center space-x-4">
+                  {/* Alertas Dropdown */}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setAlertsPanelOpen(!alertsPanelOpen)}
+                      className="relative p-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
+                      title="Alertas"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      {(expiredProducts.length > 0 || lowStockProducts.length > 0 || userTasks.length > 0) && (
+                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-4.5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">
+                          {expiredProducts.length + lowStockProducts.length + userTasks.length}
+                        </span>
+                      )}
+                    </button>
+                    {alertsPanelOpen && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setAlertsPanelOpen(false)} />
+                        <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-80 overflow-y-auto p-3">
+                          <h3 className="font-semibold text-gray-800 dark:text-white mb-2">Alertas</h3>
+                          {expiredProducts.length > 0 && (
+                            <p className="text-sm text-red-600 dark:text-red-400">{expiredProducts.length} producto(s) vencido(s)</p>
+                          )}
+                          {lowStockProducts.length > 0 && (
+                            <p className="text-sm text-yellow-600 dark:text-yellow-400">{lowStockProducts.length} con stock bajo</p>
+                          )}
+                          {userTasks.length > 0 && (
+                            <p className="text-sm text-blue-600 dark:text-blue-400">{userTasks.length} tarea(s) pendiente(s)</p>
+                          )}
+                          {expiredProducts.length === 0 && lowStockProducts.length === 0 && userTasks.length === 0 && (
+                            <p className="text-sm text-gray-500 dark:text-gray-400">Sin alertas</p>
+                          )}
+                          <Link href="/alacena" className="text-xs text-blue-600 dark:text-blue-400 mt-2 block">Ver alacena</Link>
+                          <Link href="/todo" className="text-xs text-blue-600 dark:text-blue-400 block">Ver tareas</Link>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
+                  {/* Notificaciones Button */}
+                  <NotificationButton />
+                  
+                  {/* Theme Toggle */}
+                  <ThemeToggle />
+                  
+                  {/* Profile Dropdown */}
+                  <ProfileDropdown user={user} />
+                </div>
+              </div>
+
+              {/* Welcome Section */}
+              <div className="flex items-center justify-between px-6 py-3 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 transition-colors duration-300">
+                <div className="flex items-center space-x-4">
+                  <img
+                    src={user?.profileImage || "/images/avatar.jpeg"}
+                    alt="Profile Picture"
+                    className="w-12 h-12 rounded-full border-2 border-white dark:border-gray-600 shadow-sm"
+                  />
+                  <div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">Hola,</p>
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-white">
+                      {user.name} ({user.email})
+                    </h3>
+                  </div>
+                </div>
+                <div className="hidden md:flex items-center space-x-6">
+                  <div className="flex space-x-4 text-sm">
+                    <span className="px-3 py-1 rounded-full bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300">
+                      Vencidos: {expiredProducts.length}
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-yellow-50 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300">
+                      Stock bajo: {lowStockProducts.length}
+                    </span>
+                    <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                      Tareas: {userTasks.length}
+                    </span>
+                  </div>
+                  <Link
+                    href="/select-household"
+                    className="shadow-md bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-gray-300 px-6 py-2 rounded-lg font-medium hover:bg-gray-300 dark:hover:bg-gray-600 transition-all duration-200 hover:scale-105 transform"
+                  >
+                    Inicio
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-4 lg:p-8 bg-gray-50 dark:bg-gray-900 min-h-screen transition-colors duration-300">
+              <div className="max-w-7xl mx-auto space-y-6">
+                {/* Page Title + Limpiar notificaciones */}
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
+                  <div className="text-center sm:text-left">
+                    <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Panel de Alertas</h1>
+                    <p className="text-gray-600 dark:text-gray-400">Información importante de tu hogar</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setReportModalOpen(true)}
+                      className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg transition-colors flex items-center"
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v2a2 2 0 002 2h6a2 2 0 002-2v-2M9 17H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V15a2 2 0 01-2 2h-2M9 17l6-6m-6 6l6 6" />
+                      </svg>
+                      Generar Reporte PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearNotifications}
+                      className="px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800"
+                    >
+                      Limpiar notificaciones
+                    </button>
+                  </div>
+                </div>
+
+                {loadingAlerts ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
+                    {/* Alacena Status Alert */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 animate-fade-in transition-colors duration-300">
+                      <div className="flex items-center mb-4">
+                        <div
+                          className={`p-3 rounded-full ${
+                            expiredProducts.length > 0 || lowStockProducts.length > 0
+                              ? "bg-red-100 dark:bg-red-900/20"
+                              : "bg-green-100 dark:bg-green-900/20"
+                          }`}
+                        >
+                          <svg
+                            className={`w-6 h-6 ${
+                              expiredProducts.length > 0 || lowStockProducts.length > 0
+                                ? "text-red-600 dark:text-red-400"
+                                : "text-green-600 dark:text-green-400"
+                            }`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                            ></path>
+                          </svg>
+                        </div>
+                        <div className="ml-4">
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Estado de la Alacena</h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {expiredProducts.length > 0 || lowStockProducts.length > 0
+                              ? `${expiredProducts.length} vencido${expiredProducts.length !== 1 ? "s" : ""}, ${lowStockProducts.length} con stock bajo`
+                              : "Todos los productos están en buen estado"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {expiredProducts.length > 0 || lowStockProducts.length > 0 ? (
+                        <div className="space-y-3">
+                          {expiredProducts.length > 0 && (
+                            <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-lg p-4">
+                              <h4 className="font-medium text-red-800 dark:text-red-300 mb-2">Productos Vencidos:</h4>
+                              <div className="space-y-2">
+                                {expiredProducts.slice(0, 3).map((product) => (
+                                  <div key={product._id} className="flex justify-between items-center text-sm">
+                                    <span className="text-red-700 dark:text-red-300">{product.name}</span>
+                                    <span className="text-red-600 dark:text-red-400 font-medium">Vencido</span>
+                                  </div>
+                                ))}
+                                {expiredProducts.length > 3 && (
+                                  <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                                    Y {expiredProducts.length - 3} producto{expiredProducts.length - 3 > 1 ? "s" : ""}{" "}
+                                    más...
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {lowStockProducts.length > 0 && (
+                            <div className="bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
+                              <h4 className="font-medium text-yellow-800 dark:text-yellow-300 mb-2">
+                                Productos con Stock Bajo:
+                              </h4>
+                              <div className="space-y-2">
+                                {lowStockProducts.slice(0, 3).map((product) => (
+                                  <div key={product._id} className="flex justify-between items-center text-sm">
+                                    <span className="text-yellow-700 dark:text-yellow-300">{product.name}</span>
+                                    <span className="text-yellow-600 dark:text-yellow-400 font-medium">
+                                      {product.quantity} {product.unit}
+                                    </span>
+                                  </div>
+                                ))}
+                                {lowStockProducts.length > 3 && (
+                                  <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
+                                    Y {lowStockProducts.length - 3} producto{lowStockProducts.length - 3 > 1 ? "s" : ""}{" "}
+                                    más...
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          <Link
+                            href="/alacena"
+                            className="inline-flex items-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                          >
+                            Ver alacena completa
+                            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M9 5l7 7-7 7"
+                              ></path>
+                            </svg>
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                          <p className="text-green-800 dark:text-green-300 text-sm">
+                            ¡Excelente! Todos los productos en tu alacena están en buen estado.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Pending Tasks Alert */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 animate-fade-in transition-colors duration-300">
+                      <div className="flex items-center mb-4">
+                        <div
+                          className={`p-3 rounded-full ${userTasks.length > 0 ? "bg-orange-100 dark:bg-orange-900/20" : "bg-green-100 dark:bg-green-900/20"}`}
+                        >
+                          <svg
+                            className={`w-6 h-6 ${userTasks.length > 0 ? "text-orange-600 dark:text-orange-400" : "text-green-600 dark:text-green-400"}`}
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                            ></path>
+                          </svg>
+                        </div>
+                        <div className="ml-4">
+                          <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Mis Tareas Pendientes</h3>
+                          <p className="text-sm text-gray-600 dark:text-gray-400">
+                            {userTasks.length > 0
+                              ? `Tienes ${userTasks.length} tarea${userTasks.length > 1 ? "s" : ""} pendiente${userTasks.length > 1 ? "s" : ""}`
+                              : "No tienes tareas pendientes"}
+                          </p>
+                        </div>
+                      </div>
+
+                      {userTasks.length > 0 ? (
+                        <div className="space-y-3">
+                          <div className="bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-lg p-4">
+                            <h4 className="font-medium text-orange-800 dark:text-orange-300 mb-2">Tareas Asignadas:</h4>
+                            <div className="space-y-3">
+                              {userTasks.slice(0, 3).map((task) => (
+                                <div
+                                  key={task._id}
+                                  className="border-l-2 border-orange-300 dark:border-orange-600 pl-3"
+                                >
+                                  <div className="flex justify-between items-start">
+                                    <div className="flex-1">
+                                      <h5 className="font-medium text-orange-800 dark:text-orange-300 text-sm">
+                                        {task.title}
+                                      </h5>
+                                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                        {task.description.length > 50
+                                          ? `${task.description.substring(0, 50)}...`
+                                          : task.description}
+                                      </p>
+                                    </div>
+                                    <div className="ml-2 text-right">
+                                      <span
+                                        className={`inline-block px-2 py-1 text-xs rounded-full ${
+                                          task.priority === "high"
+                                            ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-300"
+                                            : task.priority === "medium"
+                                              ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-300"
+                                              : "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-300"
+                                        }`}
+                                      >
+                                        {task.priority === "high"
+                                          ? "Alta"
+                                          : task.priority === "medium"
+                                            ? "Media"
+                                            : "Baja"}
+                                      </span>
+                                      <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">
+                                        {formatTaskDate(task.dueDate)}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                              {userTasks.length > 3 && (
+                                <p className="text-xs text-orange-600 dark:text-orange-400 mt-2">
+                                  Y {userTasks.length - 3} tarea{userTasks.length - 3 > 1 ? "s" : ""} más...
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                          <Link
+                            href="/todo"
+                            className="inline-flex items-center text-sm text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium"
+                          >
+                            Ver todas las tareas
+                            <svg className="w-4 h-4 ml-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M9 5l7 7-7 7"
+                              ></path>
+                            </svg>
+                          </Link>
+                        </div>
+                      ) : (
+                        <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
+                          <p className="text-green-800 dark:text-green-300 text-sm">
+                            ¡Perfecto! No tienes tareas pendientes en este momento.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Notifications Section */}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 animate-fade-in transition-colors duration-300">
+                      <div className="flex items-center mb-4 justify-between">
+                        <div className="flex items-center">
+                          <div
+                            className={`p-3 rounded-full ${notifications.filter((n) => !n.read).length > 0 ? "bg-blue-100 dark:bg-blue-900/20" : "bg-gray-100 dark:bg-gray-700"}`}
+                          >
+                            <svg
+                              className={`w-6 h-6 ${notifications.filter((n) => !n.read).length > 0 ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"}`}
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth="2"
+                                d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
+                              ></path>
+                            </svg>
+                          </div>
+                          <div className="ml-4">
+                            <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Notificaciones</h3>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">
+                              {notifications.filter((n) => !n.read).length > 0
+                                ? `${notifications.filter((n) => !n.read).length} sin leer`
+                                : "No hay notificaciones nuevas"}
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={clearNotifications}
+                          className="text-xs text-red-600 dark:text-red-400 hover:underline ml-2"
+                          title="Limpiar notificaciones"
+                        >
+                          Limpiar
+                        </button>
+                      </div>
+
+                      {notifications.length > 0 ? (
+                        <div className="space-y-3">
+                          <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-h-64 overflow-y-auto">
+                            <div className="space-y-3">
+                              {notifications.slice(0, 5).map((notification) => (
+                                <div
+                                  key={notification._id}
+                                  className={`border-l-2 ${
+                                    !notification.read
+                                      ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                                      : "border-gray-300 dark:border-gray-600"
+                                  } pl-3 py-2`}
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1">
+                                      <h5 className="font-medium text-blue-800 dark:text-blue-300 text-sm">
+                                        {notification.title}
+                                      </h5>
+                                      <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
+                                        {notification.message}
+                                      </p>
+                                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                        {new Date(notification.createdAt).toLocaleDateString("es-ES", {
+                                          day: "numeric",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </p>
+                                    </div>
+                                    {!notification.read && (
+                                      <span className="w-2 h-2 bg-blue-500 rounded-full ml-2 mt-1"></span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                              {notifications.length > 5 && (
+                                <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 text-center">
+                                  Y {notifications.length - 5} notificación{notifications.length - 5 > 1 ? "es" : ""}{" "}
+                                  más...
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="bg-gray-50 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg p-4">
+                          <p className="text-gray-600 dark:text-gray-400 text-sm text-center">
+                            No tienes notificaciones en este momento.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {productAlerts.length > 0 && (
+                  <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 animate-fade-in transition-colors duration-300">
+                    <h3 className="text-lg font-semibold text-red-800 dark:text-red-300 mb-4 flex items-center">
+                      <svg className="w-6 h-6 mr-2 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18.364 5.636l-1.414 1.414A9 9 0 105.636 18.364l1.414-1.414A7 7 0 1116.95 7.05l1.414-1.414z" />
+                      </svg>
+                      Alertas
+                    </h3>
+                    <div className="space-y-3">
+                      {productAlerts.slice(0, 5).map(alert => (
+                        <div
+                          key={alert._id}
+                          className={`border-l-4 ${
+                            alert.type === "product_low_stock"
+                              ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-900/10"
+                              : "border-red-500 bg-red-50 dark:bg-red-900/10"
+                          } p-3`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-sm">
+                              {alert.type === "product_low_stock" && (
+                                <>Stock bajo: <span className="font-bold">{alert.title || alert.data?.productName}</span></>
+                              )}
+                              {alert.type === "product_expiring" && (
+                                <>{alert.title || "Producto próximo a vencer"}: <span className="font-bold">{alert.data?.productName}</span></>
+                              )}
+                            </span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              {new Date(alert.createdAt).toLocaleDateString("es-ES", {
+                                day: "numeric",
+                                month: "short",
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                          {alert.message && (
+                            <div className="text-xs text-gray-700 dark:text-gray-300 mt-1">{alert.message}</div>
+                          )}
+                        </div>
+                      ))}
+                      {productAlerts.length > 5 && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-2 text-center">
+                          Y {productAlerts.length - 5} alerta{productAlerts.length - 5 > 1 ? "s" : ""} más...
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Quick Actions */}
+                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 animate-fade-in transition-colors duration-300">
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Acciones Rápidas</h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <Link
+                      href="/alacena"
+                      className="border border-2 border-solid border-blue-900/20 flex flex-col items-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                    >
+                      <svg
+                        className="w-8 h-8 text-blue-600 dark:text-blue-400 mb-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
+                        ></path>
+                      </svg>
+                      <span className="text-sm font-medium text-blue-800 dark:text-blue-300">Alacena</span>
+                    </Link>
+                    <Link
+                      href="/todo"
+                      className="border border-2 border-solid border-green-900/20 flex flex-col items-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                    >
+                      <svg
+                        className="w-8 h-8 text-green-600 dark:text-green-400 mb-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"
+                        ></path>
+                      </svg>
+                      <span className="text-sm font-medium text-green-800 dark:text-green-300">Tareas</span>
+                    </Link>
+                    <Link
+                      href="/finanzas"
+                      className="border border-2 border-solid border-purple-900/20 flex flex-col items-center p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                    >
+                      <svg
+                        className="w-8 h-8 text-purple-600 dark:text-purple-400 mb-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        ></path>
+                      </svg>
+                      <span className="text-sm font-medium text-purple-800 dark:text-purple-300">Finanzas</span>
+                    </Link>
+                    <Link
+                      href="/menu"
+                      className="border border-2 border-solid border-orange-900/20 flex flex-col items-center p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+                    >
+                      <svg
+                        className="w-8 h-8 text-orange-600 dark:text-orange-400 mb-2"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
+                        ></path>
+                      </svg>
+                      <span className="text-sm font-medium text-orange-800 dark:text-orange-300">Menú</span>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Report Generator Modal */}
+      <ReportGenerator 
+        isOpen={reportModalOpen} 
+        onClose={() => setReportModalOpen(false)} 
+      />
+    </div>
+  )
+}

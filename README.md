@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # HomeApp - Gestión Inteligente del Hogar
 
 Una aplicación web moderna para organizar y gestionar las tareas domésticas de manera colaborativa con tu familia.
@@ -171,3 +172,6 @@ Si tienes problemas o preguntas:
 ---
 
 ¡Gracias por usar HomeApp! 🏠✨
+=======
+# HomeAPP
+>>>>>>> db731e43fb8d192d6135f7b5fd1315c8208cc7da

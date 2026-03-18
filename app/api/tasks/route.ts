@@ -93,27 +93,32 @@ export async function POST(request: NextRequest) {
     const result = await tasksCol.insertOne(newTask)
     const createdTask = await tasksCol.findOne({ _id: result.insertedId })
 
-   // Create notifications for all household members
-    if (household.members && household.members.length > 0) {
-      const validMembers = household.members.filter((memberId: ObjectId) => ObjectId.isValid(memberId))
-      const notificationPromises = validMembers.map((memberId: ObjectId) =>
-        notificationsCol.insertOne({
-          userId: memberId,
+   // Create notification only for the assigned user
+    if (assignedTo && ObjectId.isValid(assignedTo)) {
+      const usersCol = db.collection("users")
+      const assignedUser = await usersCol.findOne(
+        { _id: new ObjectId(assignedTo) },
+        { projection: { name: 1 } }
+      )
+      
+      if (assignedUser) {
+        await notificationsCol.insertOne({
+          userId: new ObjectId(assignedTo),
           householdId: new ObjectId(householdId),
           type: "task_assigned",
-          title: "Nueva tarea creada, asignada a " + (assignedUserName || "nadie"),
+          title: "📋 Nueva Tarea Asignada",
+          message: `Se te ha asignado la tarea: "${title.trim()}"`,
           data: {
             taskId: result.insertedId,
             priority: priority || "low",
             dueDate: dueDate ? new Date(dueDate) : null,
-            assignedTo: assignedUserName, // Aquí agregas el nombre del asignado
+            assignedTo: assignedUser.name,
             taskTitle: title.trim(),
           },
           read: false,
           createdAt: new Date(),
-        }),
-      )
-      await Promise.all(notificationPromises)
+        })
+      }
     }
 
     return NextResponse.json(

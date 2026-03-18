@@ -3,6 +3,13 @@
 import type React from "react"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
+import type { User } from "@/lib/models/User"
+import HouseholdMember from "@/lib/models/Household"
+import { useNotifications } from "@/hooks/useNotifications"
+import { useProductNotifications } from "@/hooks/useProductNotifications"
 import Link from "next/link"
 import { ThemeToggle } from "@/components/theme-toggle" // Control de tema claro/oscuro
 import NotificationButton from "@/components/notification-button" // Sistema de notificaciones
@@ -28,6 +35,9 @@ interface Product {
 
 // Componente principal de la página de Alacena (Inventario)
 export default function AlacenaPage() {
+  // Eliminar notificaciones duplicadas - ahora se manejan centralizadamente
+  // const { showProductNotification } = useNotifications()
+  
   // Estados principales de datos
   const [products, setProducts] = useState<Product[]>([]) // Lista completa de productos
   const [loading, setLoading] = useState(true) // Estado de carga inicial
@@ -135,6 +145,9 @@ export default function AlacenaPage() {
       setLoading(false)
     }
   }
+
+  // Notificaciones centralizadas en el dashboard - eliminar duplicación
+  // useProductNotifications(products)
 
   const handleCreateProduct = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -5,11 +5,9 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import ThemeToggle from "@/components/theme-toggle" // Componente para cambiar tema claro/oscuro
 import NotificationButton from "@/components/notification-button" // Sistema de notificaciones
-import ProfileDropdown from "@/components/profile-dropdown" // Menú de perfil de usuario
+import ProfileDropdown from "@/components/profile-dropdown" // MenÃº de perfil de usuario
 import ReportGenerator from "@/components/report-generator" // Generador de reportes PDF
 import NotificationCenter from "@/components/notification-center" // Centro de notificaciones centralizado
-import { useCentralNotifications } from "@/hooks/useCentralNotifications"
-import { getImageUrl, handleImageError } from "@/lib/image-utils"
 
 // Interface para definir estructura de datos del usuario
 interface User {
@@ -66,7 +64,7 @@ interface Notification {
   type: string
   title: string
   message: string
-  read: boolean // Indica si la notificación fue leída
+  read: boolean // Indica si la notificaciÃ³n fue leÃ­da
   createdAt: string
 }
 
@@ -77,42 +75,34 @@ export default function DashboardPage() {
   const [activeHouseholdId, setActiveHouseholdId] = useState<string | null>(null) // ID del hogar activo
   const [loading, setLoading] = useState(true) // Estado de carga inicial
   const [sidebarHidden, setSidebarHidden] = useState(false) // Control de sidebar
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false) // Menú móvil
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false) // MenÃº mÃ³vil
   
   // Estados para datos del dashboard
   const [lowStockProducts, setLowStockProducts] = useState<Product[]>([]) // Productos con stock bajo
   const [expiredProducts, setExpiredProducts] = useState<Product[]>([]) // Productos vencidos
   const [userTasks, setUserTasks] = useState<Task[]>([]) // Tareas del usuario
+  const [notifications, setNotifications] = useState<Notification[]>([]) // Notificaciones
   
   // Estados para UI
   const [loadingAlerts, setLoadingAlerts] = useState(true) // Carga de alertas
   const [alertsPanelOpen, setAlertsPanelOpen] = useState(false) // Panel de alertas
   const [reportModalOpen, setReportModalOpen] = useState(false) // Modal de reportes
   
-  // Hook centralizado de notificaciones
-  const { 
-    hasCheckedProducts, 
-    fetchAndShowNotifications,
-    notifications: centralNotifications,
-    clearAll,
-    unreadCount
-  } = useCentralNotifications()
-  
   const router = useRouter()
 
-  // Función optimizada con cache para calcular estado de productos
+  // FunciÃ³n optimizada con cache para calcular estado de productos
   const calculateProductStatus = (() => {
     const cache = new Map<string, "ok" | "low" | "expiring" | "expired">()
 
     return (product: Product): "ok" | "low" | "expiring" | "expired" => {
-      // Usar cache para evitar cálculos repetidos
+      // Usar cache para evitar cÃ¡lculos repetidos
       if (cache.has(product._id)) {
         return cache.get(product._id)!
       }
 
       let status: "ok" | "low" | "expiring" | "expired" = "ok"
 
-      // Prioridad 1: Verificar vencimiento (más crítico)
+      // Prioridad 1: Verificar vencimiento (mÃ¡s crÃ­tico)
       if (product.expirationDate) {
         const now = new Date()
         const expiry = new Date(product.expirationDate)
@@ -121,7 +111,7 @@ export default function DashboardPage() {
         if (daysUntilExpiry < 0) {
           status = "expired" // Producto vencido
         } else if (daysUntilExpiry <= 3) {
-          status = "expiring" // Por vencer (3 días o menos)
+          status = "expiring" // Por vencer (3 dÃ­as o menos)
         }
       }
 
@@ -161,9 +151,6 @@ export default function DashboardPage() {
       setUser(parsedUser)
       setActiveHouseholdId(localStorage.getItem("activeHouseholdId"))
       loadAlerts(parsedUser._id)
-      
-      // Cargar notificaciones desde API y mostrarlas
-      fetchAndShowNotifications()
     } catch (error) {
       console.error("Error parsing user data:", error)
       router.push("/login")
@@ -171,6 +158,15 @@ export default function DashboardPage() {
       setLoading(false)
     }
   }, [router])
+
+  useEffect(() => {
+    async function fetchNotifications() {
+      const res = await fetch("/api/notifications?householdId=ID_DEL_HOGAR")
+      const data = await res.json()
+      setNotifications(data.notifications)
+    }
+    fetchNotifications()
+  }, [])
 
   const loadAlerts = async (userId: string) => {
     setLoadingAlerts(true)
@@ -217,8 +213,7 @@ export default function DashboardPage() {
       })
       if (notificationsResponse.ok) {
         const notificationsData = await notificationsResponse.json()
-        // Las notificaciones se manejan en el hook centralizado
-        console.log('Notificaciones cargadas:', notificationsData.notifications?.length || 0)
+        setNotifications(notificationsData.notifications || [])
       }
     } catch (error) {
       console.error("Error loading alerts:", error)
@@ -244,9 +239,9 @@ export default function DashboardPage() {
     router.push("/")
   }
 
-  const productAlerts = (centralNotifications ?? []).filter(
-    n => n.type === "product-low-stock" || n.type === "product-expiring"
-  )
+  const toggleSidebar = () => {
+    setSidebarHidden(!sidebarHidden)
+  }
 
   const toggleMobileMenu = () => {
     setMobileMenuOpen(!mobileMenuOpen)
@@ -259,11 +254,15 @@ export default function DashboardPage() {
     const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
 
     if (diffDays === 0) return "Hoy"
-    if (diffDays === 1) return "Mañana"
+    if (diffDays === 1) return "MaÃ±ana"
     if (diffDays === -1) return "Ayer"
-    if (diffDays < 0) return `Hace ${Math.abs(diffDays)} días`
-    return `En ${diffDays} días`
+    if (diffDays < 0) return `Hace ${Math.abs(diffDays)} dÃ­as`
+    return `En ${diffDays} dÃ­as`
   }
+
+  const productAlerts = (notifications ?? []).filter(
+    n => n.type === "product_low_stock" || n.type === "product_expiring"
+  )
 
   if (loading) {
     return (
@@ -365,7 +364,7 @@ export default function DashboardPage() {
               <span className="text-white ml-4 text-lg font-semibold">Lista de Tareas</span>
             </Link>
 
-            {/* Icono de Menú */}
+            {/* Icono de MenÃº */}
             <Link
               href="/menu"
               className="flex items-center p-3 rounded-xl cursor-pointer transition-all duration-300 hover:bg-blue-700 hover:scale-105 transform group animate-fade-in"
@@ -377,7 +376,7 @@ export default function DashboardPage() {
               >
                 <path d="M8.1,13.34L3.91,9.16C2.35,7.59 2.35,5.06 3.91,3.5L10.93,10.5L8.1,13.34M22.91,3.5C21.34,1.93 18.81,1.93 17.25,3.5L13.07,7.69L16.9,11.5L22.91,5.5C24.47,3.94 24.47,1.41 22.91,3.5M3.91,16.16L10.93,23.18L13.76,20.34L6.74,13.32L3.91,16.16M20.07,15.93L17.24,13.1L13.07,17.27L15.9,20.1L20.07,15.93Z" />
               </svg>
-              <span className="text-white ml-4 text-lg font-semibold">Menú</span>
+              <span className="text-white ml-4 text-lg font-semibold">MenÃº</span>
             </Link>
 
             {/* Icono de Alacena */}
@@ -395,7 +394,7 @@ export default function DashboardPage() {
               <span className="text-white ml-4 text-lg font-semibold">Alacena</span>
             </Link>
 
-            {/* Configuración del grupo */}
+            {/* ConfiguraciÃ³n del grupo */}
             {activeHouseholdId && (
               <Link
                 href={`/household-settings/${activeHouseholdId}`}
@@ -420,7 +419,7 @@ export default function DashboardPage() {
                     d="M15 12a9 9 0 11-18 0 9 9 0 0118 0z"
                   />
                 </svg>
-                <span className="text-white ml-4 text-lg font-semibold">Configuración del grupo</span>
+                <span className="text-white ml-4 text-lg font-semibold">ConfiguraciÃ³n del grupo</span>
               </Link>
             )}
 
@@ -501,9 +500,9 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between px-6 py-4">
                 <div className="flex items-center space-x-4 flex-1">
                   <button
-                    onClick={() => setSidebarHidden(!sidebarHidden)}
+                    onClick={toggleSidebar}
                     className="p-2 text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors"
-                    title="Ocultar/Mostrar menú"
+                    title="Ocultar/Mostrar menÃº"
                   >
                     <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path
@@ -536,27 +535,13 @@ export default function DashboardPage() {
                   </div>
                 </div>
               <div className="flex items-center space-x-4">
-                  {/* Alertas Dropdown */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => setAlertsPanelOpen(!alertsPanelOpen)}
-                      className="relative p-2 text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                      title="Alertas"
-                    >
-                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                      </svg>
-                      {(expiredProducts.length > 0 || lowStockProducts.length > 0 || userTasks.length > 0) && (
-                        <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-4.5 bg-amber-500 text-white text-xs rounded-full flex items-center justify-center">
-                          {expiredProducts.length + lowStockProducts.length + userTasks.length}
-                        </span>
-                      )}
-                    </button>
-                    {alertsPanelOpen && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setAlertsPanelOpen(false)} />
-                        <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-80 overflow-y-auto p-3">
+                  {/* Centro de Notificaciones Centralizado */}
+                  <NotificationCenter />
+                </div>
+                {alertsPanelOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setAlertsPanelOpen(false)} />
+                    <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-50 max-h-80 overflow-y-auto p-3">
                           <h3 className="font-semibold text-gray-800 dark:text-white mb-2">Alertas</h3>
                           {expiredProducts.length > 0 && (
                             <p className="text-sm text-red-600 dark:text-red-400">{expiredProducts.length} producto(s) vencido(s)</p>
@@ -592,10 +577,9 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between px-6 py-3 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 transition-colors duration-300">
                 <div className="flex items-center space-x-4">
                   <img
-                    src={getImageUrl(user?.profileImage)}
+                    src={user?.profileImage || "/images/avatar.jpeg"}
                     alt="Profile Picture"
                     className="w-12 h-12 rounded-full border-2 border-white dark:border-gray-600 shadow-sm"
-                    onError={(e) => handleImageError(e)}
                   />
                   <div>
                     <p className="text-sm text-gray-600 dark:text-gray-400">Hola,</p>
@@ -633,7 +617,7 @@ export default function DashboardPage() {
                 <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-8">
                   <div className="text-center sm:text-left">
                     <h1 className="text-3xl font-bold text-gray-800 dark:text-white mb-2">Panel de Alertas</h1>
-                    <p className="text-gray-600 dark:text-gray-400">Información importante de tu hogar</p>
+                    <p className="text-gray-600 dark:text-gray-400">InformaciÃ³n importante de tu hogar</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
@@ -648,20 +632,10 @@ export default function DashboardPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={clearAll}
+                      onClick={clearNotifications}
                       className="px-4 py-2 text-sm font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800"
                     >
                       Limpiar notificaciones
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        console.log('🧪 Enviando notificación de prueba...')
-                        fetchAndShowNotifications()
-                      }}
-                      className="px-4 py-2 text-sm font-medium text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800"
-                    >
-                      Probar Notificación
                     </button>
                   </div>
                 </div>
@@ -705,7 +679,7 @@ export default function DashboardPage() {
                           <p className="text-sm text-gray-600 dark:text-gray-400">
                             {expiredProducts.length > 0 || lowStockProducts.length > 0
                               ? `${expiredProducts.length} vencido${expiredProducts.length !== 1 ? "s" : ""}, ${lowStockProducts.length} con stock bajo`
-                              : "Todos los productos están en buen estado"}
+                              : "Todos los productos estÃ¡n en buen estado"}
                           </p>
                         </div>
                       </div>
@@ -725,7 +699,7 @@ export default function DashboardPage() {
                                 {expiredProducts.length > 3 && (
                                   <p className="text-xs text-red-600 dark:text-red-400 mt-2">
                                     Y {expiredProducts.length - 3} producto{expiredProducts.length - 3 > 1 ? "s" : ""}{" "}
-                                    más...
+                                    mÃ¡s...
                                   </p>
                                 )}
                               </div>
@@ -749,7 +723,7 @@ export default function DashboardPage() {
                                 {lowStockProducts.length > 3 && (
                                   <p className="text-xs text-yellow-600 dark:text-yellow-400 mt-2">
                                     Y {lowStockProducts.length - 3} producto{lowStockProducts.length - 3 > 1 ? "s" : ""}{" "}
-                                    más...
+                                    mÃ¡s...
                                   </p>
                                 )}
                               </div>
@@ -774,7 +748,7 @@ export default function DashboardPage() {
                       ) : (
                         <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
                           <p className="text-green-800 dark:text-green-300 text-sm">
-                            ¡Excelente! Todos los productos en tu alacena están en buen estado.
+                            Â¡Excelente! Todos los productos en tu alacena estÃ¡n en buen estado.
                           </p>
                         </div>
                       )}
@@ -856,7 +830,7 @@ export default function DashboardPage() {
                               ))}
                               {userTasks.length > 3 && (
                                 <p className="text-xs text-orange-600 dark:text-orange-400 mt-2">
-                                  Y {userTasks.length - 3} tarea{userTasks.length - 3 > 1 ? "s" : ""} más...
+                                  Y {userTasks.length - 3} tarea{userTasks.length - 3 > 1 ? "s" : ""} mÃ¡s...
                                 </p>
                               )}
                             </div>
@@ -879,7 +853,7 @@ export default function DashboardPage() {
                       ) : (
                         <div className="bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-lg p-4">
                           <p className="text-green-800 dark:text-green-300 text-sm">
-                            ¡Perfecto! No tienes tareas pendientes en este momento.
+                            Â¡Perfecto! No tienes tareas pendientes en este momento.
                           </p>
                         </div>
                       )}
@@ -890,10 +864,10 @@ export default function DashboardPage() {
                       <div className="flex items-center mb-4 justify-between">
                         <div className="flex items-center">
                           <div
-                            className={`p-3 rounded-full ${centralNotifications.filter((n) => !n.read).length > 0 ? "bg-blue-100 dark:bg-blue-900/20" : "bg-gray-100 dark:bg-gray-700"}`}
+                            className={`p-3 rounded-full ${notifications.filter((n) => !n.read).length > 0 ? "bg-blue-100 dark:bg-blue-900/20" : "bg-gray-100 dark:bg-gray-700"}`}
                           >
                             <svg
-                              className={`w-6 h-6 ${centralNotifications.filter((n) => !n.read).length > 0 ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"}`}
+                              className={`w-6 h-6 ${notifications.filter((n) => !n.read).length > 0 ? "text-blue-600 dark:text-blue-400" : "text-gray-600 dark:text-gray-400"}`}
                               fill="none"
                               stroke="currentColor"
                               viewBox="0 0 24 24"
@@ -909,14 +883,14 @@ export default function DashboardPage() {
                           <div className="ml-4">
                             <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Notificaciones</h3>
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                              {centralNotifications.filter((n) => !n.read).length > 0
-                                ? `${centralNotifications.filter((n) => !n.read).length} sin leer`
+                              {notifications.filter((n) => !n.read).length > 0
+                                ? `${notifications.filter((n) => !n.read).length} sin leer`
                                 : "No hay notificaciones nuevas"}
                             </p>
                           </div>
                         </div>
                         <button
-                          onClick={clearAll}
+                          onClick={clearNotifications}
                           className="text-xs text-red-600 dark:text-red-400 hover:underline ml-2"
                           title="Limpiar notificaciones"
                         >
@@ -924,11 +898,11 @@ export default function DashboardPage() {
                         </button>
                       </div>
 
-                      {centralNotifications.length > 0 ? (
+                      {notifications.length > 0 ? (
                         <div className="space-y-3">
                           <div className="bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-lg p-4 max-h-64 overflow-y-auto">
                             <div className="space-y-3">
-                              {centralNotifications.slice(0, 5).map((notification) => (
+                              {notifications.slice(0, 5).map((notification) => (
                                 <div
                                   key={notification._id}
                                   className={`border-l-2 ${
@@ -946,10 +920,9 @@ export default function DashboardPage() {
                                         {notification.message}
                                       </p>
                                       <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                                        {new Date(notification.createdAt || Date.now()).toLocaleDateString("es-ES", {
-                                          year: "numeric",
-                                          month: "long",
+                                        {new Date(notification.createdAt).toLocaleDateString("es-ES", {
                                           day: "numeric",
+                                          month: "short",
                                           hour: "2-digit",
                                           minute: "2-digit",
                                         })}
@@ -961,10 +934,10 @@ export default function DashboardPage() {
                                   </div>
                                 </div>
                               ))}
-                              {centralNotifications.length > 5 && (
+                              {notifications.length > 5 && (
                                 <p className="text-xs text-blue-600 dark:text-blue-400 mt-2 text-center">
-                                  Y {centralNotifications.length - 5} notificación{centralNotifications.length - 5 > 1 ? "es" : ""}{" "}
-                                  más...
+                                  Y {notifications.length - 5} notificaciÃ³n{notifications.length - 5 > 1 ? "es" : ""}{" "}
+                                  mÃ¡s...
                                 </p>
                               )}
                             </div>
@@ -981,7 +954,7 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                {(centralNotifications.filter(n => n.type === "product-low-stock" || n.type === "product-expiring")).length > 0 && (
+                {productAlerts.length > 0 && (
                   <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 animate-fade-in transition-colors duration-300">
                     <h3 className="text-lg font-semibold text-red-800 dark:text-red-300 mb-4 flex items-center">
                       <svg className="w-6 h-6 mr-2 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -990,26 +963,26 @@ export default function DashboardPage() {
                       Alertas
                     </h3>
                     <div className="space-y-3">
-                      {centralNotifications.filter(n => n.type === "product-low-stock" || n.type === "product-expiring").slice(0, 5).map(alert => (
+                      {productAlerts.slice(0, 5).map(alert => (
                         <div
                           key={alert._id}
                           className={`border-l-4 ${
-                            alert.type === "product-low-stock"
+                            alert.type === "product_low_stock"
                               ? "border-yellow-400 bg-yellow-50 dark:bg-yellow-900/10"
                               : "border-red-500 bg-red-50 dark:bg-red-900/10"
                           } p-3`}
                         >
                           <div className="flex items-center justify-between">
                             <span className="font-medium text-sm">
-                              {alert.type === "product-low-stock" && (
-                                <>Stock bajo: <span className="font-bold">{alert.title}</span></>
+                              {alert.type === "product_low_stock" && (
+                                <>Stock bajo: <span className="font-bold">{alert.title || alert.data?.productName}</span></>
                               )}
-                              {alert.type === "product-expiring" && (
-                                <>{alert.title || "Producto próximo a vencer"}</>
+                              {alert.type === "product_expiring" && (
+                                <>{alert.title || "Producto prÃ³ximo a vencer"}: <span className="font-bold">{alert.data?.productName}</span></>
                               )}
                             </span>
                             <span className="text-xs text-gray-500 dark:text-gray-400">
-                              {new Date(alert.createdAt || Date.now()).toLocaleDateString("es-ES", {
+                              {new Date(alert.createdAt).toLocaleDateString("es-ES", {
                                 day: "numeric",
                                 month: "short",
                                 hour: "2-digit",
@@ -1022,9 +995,9 @@ export default function DashboardPage() {
                           )}
                         </div>
                       ))}
-                      {(centralNotifications.filter(n => n.type === "product-low-stock" || n.type === "product-expiring")).length > 5 && (
+                      {productAlerts.length > 5 && (
                         <p className="text-xs text-red-600 dark:text-red-400 mt-2 text-center">
-                          Y {(centralNotifications.filter(n => n.type === "product-low-stock" || n.type === "product-expiring")).length - 5} alerta{(centralNotifications.filter(n => n.type === "product-low-stock" || n.type === "product-expiring")).length - 5 > 1 ? "s" : ""} más...
+                          Y {productAlerts.length - 5} alerta{productAlerts.length - 5 > 1 ? "s" : ""} mÃ¡s...
                         </p>
                       )}
                     </div>
@@ -1033,7 +1006,7 @@ export default function DashboardPage() {
 
                 {/* Quick Actions */}
                 <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl p-6 animate-fade-in transition-colors duration-300">
-                  <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Acciones Rápidas</h3>
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-4">Acciones RÃ¡pidas</h3>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     <Link
                       href="/alacena"
@@ -1109,7 +1082,7 @@ export default function DashboardPage() {
                           d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"
                         ></path>
                       </svg>
-                      <span className="text-sm font-medium text-orange-800 dark:text-orange-300">Menú</span>
+                      <span className="text-sm font-medium text-orange-800 dark:text-orange-300">MenÃº</span>
                     </Link>
                   </div>
                 </div>

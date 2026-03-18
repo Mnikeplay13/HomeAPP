@@ -1,7 +1,8 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useRouter } from "next/navigation"
+import { getImageUrl, handleImageError } from "@/lib/image-utils"
 import { Button } from "@/components/ui/button"
 import { toast } from "@/hooks/use-toast"
 import { Copy, Share2, ArrowLeft, Edit, Home, Users } from "lucide-react"
@@ -217,9 +218,10 @@ export default function PerfilPage() {
               <div className="relative">
                 <div className="w-32 h-32 rounded-full bg-gradient-to-br from-blue-400 to-purple-500 p-1">
                   <img
-                    src={user?.profileImage || "/images/avatar.jpeg"}
+                    src={getImageUrl(user?.profileImage)}
                     alt="Avatar"
                     className="w-full h-full rounded-full object-cover bg-white"
+                    onError={(e) => handleImageError(e)}
                   />
                 </div>
                 <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-white dark:border-gray-800 flex items-center justify-center">
@@ -268,9 +270,10 @@ export default function PerfilPage() {
                 {/* Household Info */}
                 <div className="flex items-center gap-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-700 dark:to-gray-600 rounded-lg">
                   <img
-                    src={activeHousehold.imageUrl || "/images/avatar.jpeg"}
+                    src={getImageUrl(activeHousehold.imageUrl)}
                     alt={activeHousehold.name}
                     className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md"
+                    onError={(e) => handleImageError(e)}
                   />
                   <div className="flex-1">
                     <h3 className="text-xl font-semibold text-gray-900 dark:text-white">{activeHousehold.name}</h3>
@@ -349,9 +352,10 @@ export default function PerfilPage() {
                             className="flex items-center gap-3 p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
                           >
                             <img
-                              src={member.profileImage || "/images/avatar.jpeg"}
+                              src={getImageUrl(member.profileImage)}
                               alt={member.name}
                               className="w-10 h-10 rounded-full object-cover"
+                              onError={(e) => handleImageError(e)}
                             />
                             <div className="flex-1 min-w-0">
                               <p className="font-medium text-gray-900 dark:text-white truncate">{member.name}</p>
@@ -419,9 +423,7 @@ export default function PerfilPage() {
                     src={editingProfile.profileImage || "/placeholder.svg"}
                     alt="Vista previa"
                     className="w-20 h-20 rounded-full object-cover border-2 border-gray-300"
-                    onError={(e) => {
-                      e.currentTarget.src = "/images/avatar.jpeg"
-                    }}
+                    onError={(e) => handleImageError(e)}
                   />
                 </div>
               )}

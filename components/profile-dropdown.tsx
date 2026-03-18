@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { getImageUrl, handleImageError } from "@/lib/image-utils"
 import Link from "next/link"
 
 interface User {
@@ -54,7 +55,7 @@ export default function ProfileDropdown({ user }: ProfileDropdownProps) {
 
   const userName = user.name || "Usuario"
   const userEmail = user.email || ""
-  const profileImage = user.profileImage || "/images/avatar.jpeg"
+  const profileImage = getImageUrl(user.profileImage)
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -63,13 +64,10 @@ export default function ProfileDropdown({ user }: ProfileDropdownProps) {
         className="flex items-center space-x-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
       >
         <img
-          src={profileImage || "/placeholder.svg"}
+          src={profileImage}
           alt="Profile"
           className="w-10 h-10 rounded-full border-2 border-gray-200 dark:border-gray-600 hover:border-blue-500 transition-colors"
-          onError={(e) => {
-            const target = e.target as HTMLImageElement
-            target.src = "/images/avatar.jpeg"
-          }}
+          onError={(e) => handleImageError(e)}
         />
         <span className="hidden md:block text-sm font-medium text-gray-700 dark:text-gray-300">{userName}</span>
         <svg

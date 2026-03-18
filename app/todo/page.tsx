@@ -2,12 +2,17 @@
 
 import type React from "react"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
-import { ThemeToggle } from "@/components/theme-toggle"
+import { format } from "date-fns"
+import { es } from "date-fns/locale"
+import type { User } from "@/lib/models/User"
+import HouseholdMember from "@/lib/models/Household"
+import { useNotifications } from "@/hooks/useNotifications"
 import NotificationButton from "@/components/notification-button"
 import ProfileDropdown from "@/components/profile-dropdown"
+import ThemeToggle from "@/components/theme-toggle"
 
 interface User {
   _id: string
@@ -56,6 +61,7 @@ const getAssignedToName = (assignedTo: string | HouseholdMember, householdMember
 }
 
 export default function TodoPage() {
+  const { showTaskNotification } = useNotifications()
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [sidebarHidden, setSidebarHidden] = useState(false)
@@ -207,6 +213,15 @@ export default function TodoPage() {
       if (response.ok) {
         const data = await response.json()
         setTasks([data.task, ...tasks])
+        
+        // Enviar notificación si la tarea está asignada a alguien
+        if (data.task.assignedTo) {
+          const assignedMember = householdMembers.find(m => m._id === data.task.assignedTo)
+          if (assignedMember) {
+            showTaskNotification(data.task.title, assignedMember.name)
+          }
+        }
+        
         setAddTaskModalOpen(false)
         setNewTask({
           title: "",

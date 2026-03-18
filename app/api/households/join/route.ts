@@ -46,6 +46,23 @@ export async function POST(req: NextRequest) {
       { projection: { name: 1, imageUrl: 1, inviteCode: 1 } },
     )
 
+    // Enviar notificación a todos los miembros del hogar
+    const notificationsCol = db.collection("notifications")
+    const notificationPromises = household.members.map(async (memberId: ObjectId) => {
+      await notificationsCol.insertOne({
+        userId: memberId,
+        householdId: household._id,
+        title: '🏠 Nuevo Miembro en el Hogar',
+        body: `${user.name} se ha unido a tu hogar "${household.name}"`,
+        type: 'household-join',
+        read: false,
+        createdAt: new Date()
+      })
+    })
+
+    // Esperar a que todas las notificaciones se inserten
+    await Promise.all(notificationPromises)
+
     return NextResponse.json({ household: updated }, { status: 200 })
   } catch (e) {
     console.error("POST /api/households/join error:", e)

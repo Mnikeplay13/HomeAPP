@@ -1,0 +1,24 @@
+{
+  "type": "Compass Connections",
+  "version": {
+    "$numberInt": "1"
+  },
+  "connections": [
+    {
+      "id": "3311b63c-ac2f-415e-a11a-7012f13f364e",
+      "lastUsed": {
+        "$date": {
+          "$numberLong": "1773787143434"
+        }
+      },
+      "favorite": {
+        "name": "cluster0.omxmmxd.mongodb.net"
+      },
+      "savedConnectionType": "recent",
+      "connectionOptions": {
+        "connectionString": "mongodb+srv://lemusabn@cluster0.omxmmxd.mongodb.net/HomeAPP?retryWrites=true&w=majority&appName=Cluster0",
+        "oidc": {}
+      }
+    }
+  ]
+}

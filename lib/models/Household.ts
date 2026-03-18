@@ -1,6 +1,13 @@
 import { ObjectId, type Collection, type Db } from "mongodb"
 import { getDatabase } from "@/lib/mongodb"
 
+export interface HouseholdMember {
+  _id: string
+  name: string
+  email: string
+  profileImage?: string
+}
+
 // We define the same interface to ensure type safety.
 export interface HouseholdDoc {
   _id: ObjectId

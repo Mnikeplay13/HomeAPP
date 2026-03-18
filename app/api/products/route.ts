@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
           notificationsCol.insertOne({
             userId: memberId,
             householdId: new ObjectId(body.householdId),
-            type: "product_low_stock",
+            type: "product-low-stock",
             title: "Stock bajo en alacena",
             message: `${body.name} tiene stock bajo (${body.quantity} ${body.quantityUnit})`,
             data: { productId: result.insertedId, productName: body.name },
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
             notificationsCol.insertOne({
               userId: memberId,
               householdId: new ObjectId(body.householdId),
-              type: "product_expiring",
+              type: "product-expiring",
               title: "Producto próximo a vencer",
               message: `${body.name} vence en ${daysUntilExpiry} días`,
               data: { productId: result.insertedId, productName: body.name, daysUntilExpiry },

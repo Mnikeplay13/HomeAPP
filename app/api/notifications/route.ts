@@ -20,14 +20,28 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ message: "Usuario o hogar no encontrado" }, { status: 404 })
     }
 
+    // Obtener notificaciones que no han sido mostradas o que son nuevas
     const notifications = await notificationsCol
       .find({
         userId: new ObjectId(user._id),
         householdId: userDoc.activeHousehold,
+        $or: [
+          { shownOnce: { $ne: true } }, // No mostradas aún
+          { createdAt: { $gt: new Date(Date.now() - 24 * 60 * 60 * 1000) } } // O de las últimas 24h
+        ]
       })
       .sort({ createdAt: -1 })
       .limit(50)
       .toArray()
+
+    // Marcar estas notificaciones como mostradas una vez
+    if (notifications.length > 0) {
+      const notificationIds = notifications.map(n => n._id)
+      await notificationsCol.updateMany(
+        { _id: { $in: notificationIds } },
+        { $set: { shownOnce: true } }
+      )
+    }
 
     const unreadCount = await notificationsCol.countDocuments({
       userId: new ObjectId(user._id),

@@ -14,51 +14,10 @@ export const metadata: Metadata = {
     manifest: '/manifest.json'
 }
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode
-}) {
+export default function RootLayout({ children }) {
   return (
-    <html lang="es" suppressHydrationWarning>
-      <head>
-        <script
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  var theme = localStorage.getItem('theme');
-                  if (theme) {
-                    document.documentElement.classList.add(theme);
-                  } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-                    document.documentElement.classList.add('dark');
-                  }
-                } catch (e) {}
-              })();
-              
-              // Registrar Service Worker para notificaciones
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/sw.js')
-                    .then(function(registration) {
-                      console.log('Service Worker registrado con éxito:', registration);
-                    })
-                    .catch(function(error) {
-                      console.log('Error al registrar Service Worker:', error);
-                    });
-                });
-              }
-            `,
-          }}
-        />
-      </head>
-      <body className={inter.className} suppressHydrationWarning>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          {children}
-          <NotificationPermission />
-        </ThemeProvider>
-      </body>
+    <html lang="es">
+      <body>{children}</body>
     </html>
   )
 }

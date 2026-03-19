@@ -464,7 +464,7 @@ export default function RegisterPage() {
                 <img src="https://files.catbox.moe/xhu5ls.png" alt="HomeApp Logo" className="w-18 h-18" />
               </div>
               <h1 className="text-white text-4xl font-bold mb-6 leading-tight">
-                Únete a la <span className="text-purple-300 dark:text-purple-300">Revolución</span> del Hogar
+                Únete a la <span className="text-purple-300 dark:text-purple-300">Evolución</span> del Hogar
               </h1>
               <p className="text-xl text-blue-100 dark:text-blue-200 mb-8 leading-relaxed max-w-md">
                 Más de - -  familias ya organizan su vida diaria con HomeApp

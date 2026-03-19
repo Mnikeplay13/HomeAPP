@@ -149,7 +149,7 @@ export default function FinanzasPage() {
     for (let day = 1; day <= daysInMonth; day++) {
       chartArray.push({
         day: `Día ${day}`,
-        monto: dailyGastos[day] - dailyIngresos[day],
+        monto: dailyIngresos[day] - dailyGastos[day], // Ingresos positivos, gastos negativos
       })
     }
     setChartData(chartArray)

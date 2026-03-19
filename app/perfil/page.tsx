@@ -346,13 +346,15 @@ export default function PerfilPage() {
                             : role === "Administrador"
                               ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
                               : "bg-gray-100 text-gray-800 dark:bg-gray-600 dark:text-gray-200"
+                        // Mostrar la imagen del miembro correspondiente
+                        const profileImage = member.profileImage || "/placeholder-user.jpg"
                         return (
                           <div
                             key={member._id || index}
                             className="flex items-center gap-3 p-3 bg-white dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600"
                           >
                             <img
-                              src={getImageUrl(member.profileImage)}
+                              src={getImageUrl(profileImage)}
                               alt={member.name}
                               className="w-10 h-10 rounded-full object-cover"
                               onError={(e) => handleImageError(e)}

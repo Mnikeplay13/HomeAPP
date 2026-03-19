@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server"
 import { ObjectId } from "mongodb"
 import { getDatabase } from "@/lib/mongodb"
 import { requireUser } from "@/lib/auth"
+import { formatVenezuelaDate } from "@/lib/utils"
 
 export async function GET(request: NextRequest) {
   try {
@@ -70,12 +71,12 @@ export async function POST(request: NextRequest) {
       status: "pending",
       priority,
       category,
-      dueDate: new Date(dueDate),
+      dueDate: formatVenezuelaDate(dueDate),
       assignedTo: assignedTo?.trim() || "", // Store as string (name) or empty
       createdBy: new ObjectId(household.members[0]), // Use first member as creator for now
       householdId: new ObjectId(householdId),
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      createdAt: formatVenezuelaDate(new Date()),
+      updatedAt: formatVenezuelaDate(new Date()),
     }
 
     // Get assigned user's name if assignedTo is provided and valid
@@ -111,12 +112,12 @@ export async function POST(request: NextRequest) {
           data: {
             taskId: result.insertedId,
             priority: priority || "low",
-            dueDate: dueDate ? new Date(dueDate) : null,
+            dueDate: dueDate ? formatVenezuelaDate(dueDate) : null,
             assignedTo: assignedUser.name,
             taskTitle: title.trim(),
           },
           read: false,
-          createdAt: new Date(),
+          createdAt: formatVenezuelaDate(new Date()),
         })
       }
     }

@@ -294,7 +294,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between p-4 lg:justify-center">
             <div className="flex items-center space-x-2 animate-fade-in">
               <img
-                src="https://files.catbox.moe/xhu5ls.png"
+                src="https://cdn.discordapp.com/attachments/416734955440308244/1412109067308110126/homeapp-logo.png?ex=69e10b8d&is=69dfba0d&hm=ac1b6ace8c064e513f3a9d59aaba998e65852b9f78df1c57fbcd2c6d486ea9d5&"
                 alt="HomeApp"
                 className="h-10 w-auto drop-shadow-md"
               />
@@ -442,7 +442,7 @@ export default function DashboardPage() {
               </button>
               <div className="flex items-center space-x-2">
                 <img
-                  src="https://files.catbox.moe/xhu5ls.png"
+                  src="https://cdn.discordapp.com/attachments/416734955440308244/1412109067308110126/homeapp-logo.png?ex=69e10b8d&is=69dfba0d&hm=ac1b6ace8c064e513f3a9d59aaba998e65852b9f78df1c57fbcd2c6d486ea9d5&"
                   alt="HomeApp"
                   className="h-8 w-auto"
                 />

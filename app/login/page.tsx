@@ -134,7 +134,7 @@ export default function LoginPage() {
           <div className="relative z-10 flex flex-col justify-center items-center  p-12 w-full">
             <div className="text-center animate-fade-in">
               <div className="w-32 h-32 mx-auto mb-8 bg-white/20 dark:bg-white/10 rounded-full flex items-center justify-center shadow-2xl">
-                <img src="https://files.catbox.moe/xhu5ls.png" alt="HomeApp Logo" className="w-18 h-18" />
+                <img src="https://cdn.discordapp.com/attachments/416734955440308244/1412109067308110126/homeapp-logo.png?ex=69e10b8d&is=69dfba0d&hm=ac1b6ace8c064e513f3a9d59aaba998e65852b9f78df1c57fbcd2c6d486ea9d5&" alt="HomeApp Logo" className="w-18 h-18" />
               </div>
               <h1 className="text-white dark:text-white text-4xl font-bold mb-6 leading-tight">
                 Bienvenido a <span className="text-blue-200 dark:text-blue-300">HomeApp</span>

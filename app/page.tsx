@@ -36,7 +36,7 @@ export default function HomePage() {
           <div className="flex justify-between items-center py-4">
             {/* Logo */}
             <div className="flex items-center space-x-3">
-              <img src="https://files.catbox.moe/xhu5ls.png" alt="HomeApp" className="h-12 w-auto" />
+              <img src="https://cdn.discordapp.com/attachments/416734955440308244/1412109067308110126/homeapp-logo.png?ex=69e10b8d&is=69dfba0d&hm=ac1b6ace8c064e513f3a9d59aaba998e65852b9f78df1c57fbcd2c6d486ea9d5&" alt="HomeApp" className="h-12 w-auto" />
             </div>
 
             {/* Desktop Navigation */}
@@ -420,7 +420,7 @@ export default function HomePage() {
 
             <div className="relative">
               <img
-                src="https://files.catbox.moe/xhu5ls.png"
+                src="https://cdn.discordapp.com/attachments/416734955440308244/1412109067308110126/homeapp-logo.png?ex=69e10b8d&is=69dfba0d&hm=ac1b6ace8c064e513f3a9d59aaba998e65852b9f78df1c57fbcd2c6d486ea9d5&"
                 alt="HomeApp Features"
                 className="w-full h-auto rounded-2xl shadow-2xl"
               />
@@ -461,7 +461,7 @@ export default function HomePage() {
             <div className="space-y-4">
               <div className="flex items-center space-x-3">
                 <img
-                  src="https://files.catbox.moe/xhu5ls.png"
+                  src="https://cdn.discordapp.com/attachments/416734955440308244/1412109067308110126/homeapp-logo.png?ex=69e10b8d&is=69dfba0d&hm=ac1b6ace8c064e513f3a9d59aaba998e65852b9f78df1c57fbcd2c6d486ea9d5&"
                   alt="HomeApp"
                   className="h-8 w-auto"
                 />

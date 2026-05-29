@@ -45,12 +45,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // El POST también requiere autenticación para registrar quién crea la tarea.
+    // Antes faltaba este guard, permitiendo crear tareas sin sesión válida.
+    const auth = await requireUser(request)
+    if ("error" in auth) {
+      return NextResponse.json({ error: auth.error }, { status: auth.status })
+    }
+    const { user } = auth
+
     const body = await request.json()
     const { title, description, priority, category, dueDate, assignedTo, householdId } = body
 
-    // Validate required fields
     if (!title || !description || !priority || !category || !dueDate || !householdId) {
       return NextResponse.json({ error: "Faltan campos requeridos" }, { status: 400 })
+    }
+
+    if (!ObjectId.isValid(householdId)) {
+      return NextResponse.json({ error: "householdId inválido" }, { status: 400 })
     }
 
     const db = await getDatabase()
@@ -58,13 +69,11 @@ export async function POST(request: NextRequest) {
     const householdsCol = db.collection("households")
     const notificationsCol = db.collection("notifications")
 
-    // Verify household exists
     const household = await householdsCol.findOne({ _id: new ObjectId(householdId) })
     if (!household) {
       return NextResponse.json({ error: "Hogar no encontrado" }, { status: 404 })
     }
 
-    // Create new task object following the same pattern as menu/products
     const newTask = {
       title: title.trim(),
       description: description.trim(),
@@ -72,8 +81,10 @@ export async function POST(request: NextRequest) {
       priority,
       category,
       dueDate: formatVenezuelaDate(dueDate),
-      assignedTo: assignedTo?.trim() || "", // Store as string (name) or empty
-      createdBy: new ObjectId(household.members[0]), // Use first member as creator for now
+      assignedTo: assignedTo?.trim() || "",
+      // createdBy proviene del token autenticado, no de household.members[0],
+      // que era una asignación arbitraria y no reflejaba al usuario real.
+      createdBy: user._id,
       householdId: new ObjectId(householdId),
       createdAt: formatVenezuelaDate(new Date()),
       updatedAt: formatVenezuelaDate(new Date()),

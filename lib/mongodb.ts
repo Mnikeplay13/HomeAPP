@@ -42,22 +42,10 @@ export async function connectToDatabase(): Promise<void> {
   await clientPromise;
 }
 
-/**
- * Connects to the database and returns both the client and the db object.
-export async function connectToDatabase(dbName?: string): Promise<{ client: MongoClient; db: Db }> {
-  const client = await clientPromise;
-  if (!client) {
-    throw new Error("MongoDB client not initialized");
-  }
-  const name = dbName || process.env.MONGODB_DB_NAME || "HomeAPP";
-  const db = client.db(name);
-  return { client, db };
-}
-  const db = client.db(name);
-  return { client, db };
-}
+/* Código legado eliminado — la función connectToDatabase con retorno { client, db }
+   fue reemplazada por getDatabase(). Ref: refactor de conexión MongoDB.
 
-/* import { MongoClient, type Db, ServerApiVersion } from "mongodb"
+import { MongoClient, type Db, ServerApiVersion } from "mongodb"
 
 if (!process.env.MONGODB_URI) {
   throw new Error('Invalid/Missing environment variable: "MONGODB_URI"')

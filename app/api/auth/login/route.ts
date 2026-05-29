@@ -7,17 +7,24 @@ export async function POST(request: NextRequest) {
   try {
     const { email, password } = await request.json()
 
-    // Validar datos de entrada
     if (!email || !password) {
       return NextResponse.json({ message: "Email y contraseña son requeridos" }, { status: 400 })
     }
 
-    // Conectar a la base de datos
+    // Normalizar email para que coincida con el índice creado durante el registro
+    const normalizedEmail = String(email).toLowerCase().trim()
+
+    // Fallar rápido si falta la variable de entorno en lugar de lanzar una excepción interna
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      console.error("[AUTH] JWT_SECRET no está configurado")
+      return NextResponse.json({ message: "Error de configuración del servidor" }, { status: 500 })
+    }
+
     const db = await getDatabase()
     const usersCollection = db.collection("users")
 
-    // Buscar el usuario
-    const user = await usersCollection.findOne({ email })
+    const user = await usersCollection.findOne({ email: normalizedEmail })
     if (!user) {
       return NextResponse.json({ message: "Credenciales inválidas" }, { status: 401 })
     }
@@ -28,13 +35,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Credenciales inválidas" }, { status: 401 })
     }
 
-    // Crear JWT token
     const token = jwt.sign(
-      {
-        userId: user._id,
-        email: user.email,
-      },
-      process.env.JWT_SECRET!,
+      { userId: user._id, email: user.email },
+      jwtSecret,
       { expiresIn: "7d" },
     )
 

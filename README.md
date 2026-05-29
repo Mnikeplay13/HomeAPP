@@ -165,9 +165,8 @@ Si tienes problemas o preguntas:
 
 ## 📞 Contacto
 
-- **Email**: support@homeapp.com
-- **Website**: https://homeapp.vercel.app
-- **GitHub**: https://github.com/tu-usuario/homeapp
+- **Email**: lemusabn@gmail.com  
+- **GitHub**: https://github.com/Mnikeplay13/HomeAPP
 
 ---
 
